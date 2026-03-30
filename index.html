@@ -950,23 +950,14 @@ async function gsLoad() {
 
 async function gsSave(loja) {
   try {
-    await fetch(GS_URL, {
-      method: 'POST',
-      redirect: 'follow',
-      headers: { 'Content-Type': 'text/plain' },
-      body: JSON.stringify({ action: 'save', loja })
-    });
+    const encoded = encodeURIComponent(JSON.stringify(loja));
+    await fetch(GS_URL + '?action=save&loja=' + encoded, { redirect: 'follow' });
   } catch(e) { console.warn('gsSave error', e); }
 }
 
 async function gsDelete(id) {
   try {
-    await fetch(GS_URL, {
-      method: 'POST',
-      redirect: 'follow',
-      headers: { 'Content-Type': 'text/plain' },
-      body: JSON.stringify({ action: 'delete', id })
-    });
+    await fetch(GS_URL + '?action=delete&id=' + id, { redirect: 'follow' });
   } catch(e) { console.warn('gsDelete error', e); }
 }
 
