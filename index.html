@@ -784,6 +784,8 @@ body {
     <div class="header-logo">TEZ</div>
     <div class="header-title">Prospecção · Boutiques</div>
     <div class="header-actions">
+      <span id="sync-status" style="font-size:11px;color:var(--text-muted);transition:opacity 1s;opacity:0;margin-right:4px"></span>
+      <button class="btn btn-outline btn-sm" onclick="sincronizarManual()" title="Sincronizar com Google Sheets">⟳ Sync</button>
       <button class="btn btn-gold" onclick="openModalNova()">+ Nova Loja</button>
       <button class="btn btn-outline btn-sm" onclick="exportarCSV()">↓ CSV</button>
       <button class="btn btn-ghost btn-sm" onclick="logout()" style="color:var(--text-muted)">Sair</button>
@@ -921,6 +923,7 @@ body {
 // ==================== DATA ====================
 const PASS = '1234';
 const KEY = 'tez_boutiques';
+const GS_URL = 'https://script.google.com/macros/s/AKfycbyKWc9T7ssz4UZuAJSG_KQKmGHfwpcvt-OLzcL28r--64HrNb8q9VN9Es4-wcpD-8pY/exec';
 
 function getData() {
   try { return JSON.parse(localStorage.getItem(KEY)) || []; } catch { return []; }
@@ -928,6 +931,52 @@ function getData() {
 
 function saveData(d) {
   localStorage.setItem(KEY, JSON.stringify(d));
+}
+
+// ==================== SYNC ====================
+async function gsLoad() {
+  try {
+    const res = await fetch(GS_URL + '?action=load', { redirect: 'follow' });
+    const json = await res.json();
+    if (json.ok && Array.isArray(json.data) && json.data.length > 0) {
+      const local = getData();
+      const localMap = {};
+      local.forEach(l => localMap[l.id] = l);
+      json.data.forEach(l => { if (!localMap[l.id]) localMap[l.id] = l; });
+      saveData(Object.values(localMap));
+    }
+  } catch(e) { console.warn('gsLoad error', e); }
+}
+
+async function gsSave(loja) {
+  try {
+    await fetch(GS_URL, {
+      method: 'POST',
+      redirect: 'follow',
+      headers: { 'Content-Type': 'text/plain' },
+      body: JSON.stringify({ action: 'save', loja })
+    });
+  } catch(e) { console.warn('gsSave error', e); }
+}
+
+async function gsDelete(id) {
+  try {
+    await fetch(GS_URL, {
+      method: 'POST',
+      redirect: 'follow',
+      headers: { 'Content-Type': 'text/plain' },
+      body: JSON.stringify({ action: 'delete', id })
+    });
+  } catch(e) { console.warn('gsDelete error', e); }
+}
+
+function showSyncStatus(msg, cor) {
+  let el = document.getElementById('sync-status');
+  if (!el) return;
+  el.textContent = msg;
+  el.style.color = cor || 'var(--text-muted)';
+  el.style.opacity = '1';
+  setTimeout(() => { el.style.opacity = '0'; }, 3000);
 }
 
 let currentTab = 'lista';
@@ -943,6 +992,11 @@ function doLogin() {
   if (v === PASS) {
     document.getElementById('login-screen').style.display = 'none';
     document.getElementById('app').style.display = 'flex';
+    showSyncStatus('🔄 Sincronizando...', 'var(--contato)');
+    gsLoad().then(() => {
+      showSyncStatus('✔ Sincronizado', 'var(--parceria)');
+      renderTab();
+    });
     renderTab();
   } else {
     document.getElementById('login-error').textContent = 'Senha incorreta.';
@@ -1249,6 +1303,7 @@ function salvarLoja() {
 
   saveData(data);
   closeModalLoja();
+  gsSave(loja).then(() => showSyncStatus('✔ Salvo no Sheets', 'var(--parceria)'));
   renderTab();
 }
 
@@ -1341,6 +1396,7 @@ function atualizarStatus(id, novoStatus) {
   if (idx >= 0) {
     data[idx].status = novoStatus;
     saveData(data);
+    gsSave(data[idx]).then(() => showSyncStatus('✔ Status atualizado', 'var(--parceria)'));
     renderTab();
   }
 }
@@ -1359,6 +1415,7 @@ function addLog(id) {
       texto
     });
     saveData(data);
+    gsSave(data[idx]).then(() => showSyncStatus('✔ Log salvo no Sheets', 'var(--parceria)'));
     openDetalhe(id);
     renderTab();
   }
@@ -1368,6 +1425,7 @@ function excluirLoja(id) {
   if (!confirm('Excluir esta loja permanentemente?')) return;
   let data = getData().filter(x => x.id !== id);
   saveData(data);
+  gsDelete(id).then(() => showSyncStatus('✔ Excluído do Sheets', 'var(--parceria)'));
   closeModalDetalhe();
   renderTab();
 }
@@ -1458,6 +1516,14 @@ function renderMapa() {
 function closeMapPopupAndOpen(id) {
   if (leafletMap) leafletMap.closePopup();
   openDetalhe(id);
+}
+
+function sincronizarManual() {
+  showSyncStatus('🔄 Sincronizando...', 'var(--contato)');
+  gsLoad().then(() => {
+    showSyncStatus('✔ Sincronizado', 'var(--parceria)');
+    renderTab();
+  });
 }
 
 // ==================== EXPORT ====================
