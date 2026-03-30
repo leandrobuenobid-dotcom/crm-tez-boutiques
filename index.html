@@ -5,6 +5,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>CRM Tez · Prospecção Boutiques</title>
 <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;700;900&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css"/>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
 <style>
 :root {
   --bg: #0f0e0c;
@@ -620,18 +622,46 @@ body {
 .estado-bar-count { font-size: 11px; color: var(--text-muted); width: 20px; text-align: right; }
 
 /* MAP TAB */
-#tab-mapa { display: none; }
-
-.map-container {
-  background: var(--surface);
-  border: 1px solid var(--border);
+#map-leaflet {
+  height: 560px;
   border-radius: var(--radius);
   overflow: hidden;
-  height: 500px;
-  display: flex; align-items: center; justify-content: center;
-  color: var(--text-dim);
-  flex-direction: column; gap: 12px;
+  border: 1px solid var(--border);
+  z-index: 1;
 }
+
+.leaflet-popup-content-wrapper {
+  background: #1a1814 !important;
+  border: 1px solid #2e2a22 !important;
+  color: #f0ebe0 !important;
+  border-radius: 10px !important;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.6) !important;
+}
+
+.leaflet-popup-tip { background: #1a1814 !important; }
+.leaflet-popup-content { margin: 12px 16px !important; }
+
+.map-popup-nome { font-weight: 700; font-size: 14px; margin-bottom: 4px; }
+.map-popup-cidade { font-size: 12px; color: #8a8070; margin-bottom: 8px; }
+.map-popup-badge { display:inline-block; padding:3px 9px; border-radius:20px; font-size:11px; font-weight:600; margin-bottom:8px; }
+.map-popup-btn { display:inline-block; padding:5px 12px; background:#c9a84c; color:#0f0e0c; border-radius:6px; font-size:12px; font-weight:600; cursor:pointer; border:none; }
+
+.map-legend {
+  display: flex; gap: 16px; align-items: center;
+  padding: 12px 16px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  margin-bottom: 14px;
+  flex-wrap: wrap;
+}
+
+.map-legend-item { display:flex; align-items:center; gap:6px; font-size:12px; color:var(--text-dim); }
+.map-legend-dot { width:12px; height:12px; border-radius:50%; flex-shrink:0; }
+
+.coord-row { display:flex; gap:8px; align-items:center; }
+.coord-row input { flex:1; }
+.coord-help { font-size:11px; color:var(--text-muted); margin-top:4px; }
 
 /* EMPTY STATE */
 .empty {
@@ -764,6 +794,7 @@ body {
     <div class="tab active" onclick="setTab('lista')" id="tab-btn-lista">Lista</div>
     <div class="tab" onclick="setTab('kanban')" id="tab-btn-kanban">Kanban</div>
     <div class="tab" onclick="setTab('estados')" id="tab-btn-estados">Por Estado</div>
+    <div class="tab" onclick="setTab('mapa')" id="tab-btn-mapa">🗺 Mapa</div>
   </div>
 
   <div class="main" id="main-content">
@@ -847,6 +878,15 @@ body {
           </div>
         </div>
         <div class="form-group form-full">
+          <label>📍 Localização no Mapa</label>
+          <div class="coord-row">
+            <input type="text" id="f-lat" placeholder="Latitude (ex: -16.6864)">
+            <input type="text" id="f-lng" placeholder="Longitude (ex: -49.2643)">
+            <a class="btn btn-outline btn-sm" href="https://maps.google.com" target="_blank" title="Abrir Google Maps">🗺 Maps</a>
+          </div>
+          <div class="coord-help">Abra o Google Maps → clique com botão direito no local da loja → copie as coordenadas que aparecem no topo do menu</div>
+        </div>
+        <div class="form-group form-full">
           <label>Anotações</label>
           <textarea id="f-notas" placeholder="Observações sobre a loja, preferências, contexto..."></textarea>
         </div>
@@ -918,7 +958,7 @@ function logout() {
 // ==================== TABS ====================
 function setTab(t) {
   currentTab = t;
-  ['lista','kanban','estados'].forEach(x => {
+  ['lista','kanban','estados','mapa'].forEach(x => {
     document.getElementById('tab-btn-' + x).classList.toggle('active', x === t);
   });
   renderTab();
@@ -927,6 +967,7 @@ function setTab(t) {
 function renderTab() {
   if (currentTab === 'lista') renderLista();
   else if (currentTab === 'kanban') renderKanban();
+  else if (currentTab === 'mapa') renderMapa();
   else renderEstados();
 }
 
@@ -1144,6 +1185,8 @@ function editarLoja(id) {
   document.getElementById('f-site').value = l.site || '';
   document.getElementById('f-status').value = l.status || 'prospect';
   document.getElementById('f-followup').value = l.followup || '';
+  document.getElementById('f-lat').value = l.lat || '';
+  document.getElementById('f-lng').value = l.lng || '';
   document.getElementById('f-notas').value = l.notas || '';
   document.querySelectorAll('#f-produtos input[type=checkbox]').forEach(cb => {
     cb.checked = (l.produtos||[]).includes(cb.value);
@@ -1152,7 +1195,7 @@ function editarLoja(id) {
 }
 
 function clearForm() {
-  ['f-nome','f-resp','f-wpp','f-tel','f-cidade','f-end','f-insta','f-site','f-notas','f-followup'].forEach(id => {
+  ['f-nome','f-resp','f-wpp','f-tel','f-cidade','f-end','f-insta','f-site','f-notas','f-followup','f-lat','f-lng'].forEach(id => {
     document.getElementById(id).value = '';
   });
   document.getElementById('f-estado').value = '';
@@ -1184,6 +1227,8 @@ function salvarLoja() {
     site: document.getElementById('f-site').value.trim(),
     status: document.getElementById('f-status').value,
     followup: document.getElementById('f-followup').value,
+    lat: parseFloat(document.getElementById('f-lat').value) || null,
+    lng: parseFloat(document.getElementById('f-lng').value) || null,
     notas: document.getElementById('f-notas').value.trim(),
     produtos,
     log: [],
@@ -1325,6 +1370,94 @@ function excluirLoja(id) {
   saveData(data);
   closeModalDetalhe();
   renderTab();
+}
+
+// ==================== MAPA ====================
+let leafletMap = null;
+
+function renderMapa() {
+  const lojas = getFiltered();
+  const comCoord = lojas.filter(l => l.lat && l.lng);
+  const semCoord = lojas.filter(l => !l.lat || !l.lng);
+
+  const statusColors = {
+    prospect: '#5b8dd9',
+    contato: '#e8a83a',
+    negociacao: '#9b6fd4',
+    parceria: '#4caf7d'
+  };
+
+  document.getElementById('main-content').innerHTML = `
+    ${renderStats(getData())}
+    <div class="map-legend">
+      <span style="font-size:11px;font-weight:600;color:var(--text-muted);letter-spacing:1px;text-transform:uppercase">Legenda:</span>
+      <div class="map-legend-item"><div class="map-legend-dot" style="background:#5b8dd9"></div>Prospect</div>
+      <div class="map-legend-item"><div class="map-legend-dot" style="background:#e8a83a"></div>Contato Feito</div>
+      <div class="map-legend-item"><div class="map-legend-dot" style="background:#9b6fd4"></div>Em Negociação</div>
+      <div class="map-legend-item"><div class="map-legend-dot" style="background:#4caf7d"></div>Parceria Fechada</div>
+      <span style="margin-left:auto;font-size:12px;color:var(--text-muted)">${comCoord.length} loja(s) no mapa · ${semCoord.length} sem coordenadas</span>
+    </div>
+    <div id="map-leaflet"></div>
+    ${semCoord.length > 0 ? `
+    <div style="margin-top:14px">
+      <div class="section-title">Lojas sem localização definida (${semCoord.length})</div>
+      <div style="display:flex;flex-wrap:wrap;gap:8px">
+        ${semCoord.map(l => `
+          <div style="background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:8px 14px;display:flex;align-items:center;gap:10px">
+            <span class="badge badge-${l.status}" style="font-size:10px">${statusLabel(l.status)}</span>
+            <span style="font-size:13px">${l.nome}</span>
+            <span style="font-size:11px;color:var(--text-muted)">${l.cidade||''} ${l.estado||''}</span>
+            <button class="btn btn-outline btn-sm" style="font-size:11px" onclick="editarLoja('${l.id}')">+ Coord</button>
+          </div>`).join('')}
+      </div>
+    </div>` : ''}`;
+
+  // Destroy existing map instance
+  if (leafletMap) { leafletMap.remove(); leafletMap = null; }
+
+  leafletMap = L.map('map-leaflet', { zoomControl: true }).setView([-15.8, -49.5], 5);
+
+  L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+    attribution: '© OpenStreetMap © CARTO',
+    subdomains: 'abcd', maxZoom: 19
+  }).addTo(leafletMap);
+
+  comCoord.forEach(l => {
+    const cor = statusColors[l.status] || '#888';
+    const svgIcon = `<svg xmlns="http://www.w3.org/2000/svg" width="28" height="36" viewBox="0 0 28 36">
+      <path d="M14 0C6.268 0 0 6.268 0 14c0 9.333 14 22 14 22S28 23.333 28 14C28 6.268 21.732 0 14 0z" fill="${cor}" stroke="white" stroke-width="1.5"/>
+      <circle cx="14" cy="14" r="5" fill="white" opacity="0.9"/>
+    </svg>`;
+
+    const icon = L.divIcon({
+      html: svgIcon,
+      iconSize: [28, 36],
+      iconAnchor: [14, 36],
+      popupAnchor: [0, -36],
+      className: ''
+    });
+
+    const prods = (l.produtos||[]).join(', ') || '—';
+    const popupHtml = `
+      <div class="map-popup-nome">${l.nome}</div>
+      <div class="map-popup-cidade">${[l.cidade, l.estado].filter(Boolean).join(' · ') || '—'}</div>
+      <span class="map-popup-badge" style="background:${cor}22;color:${cor}">${statusLabel(l.status)}</span>
+      <div style="font-size:11px;color:#8a8070;margin-bottom:6px">${l.resp ? '👤 ' + l.resp : ''}</div>
+      ${l.wpp ? `<a href="https://wa.me/55${l.wpp.replace(/\D/g,'')}" target="_blank" style="display:inline-flex;align-items:center;gap:5px;padding:5px 12px;background:#4caf7d22;color:#4caf7d;border:1px solid #4caf7d44;border-radius:6px;font-size:12px;font-weight:600;text-decoration:none;margin-right:6px">💬 WhatsApp</a>` : ''}
+      <button class="map-popup-btn" onclick="closeMapPopupAndOpen('${l.id}')">Ver detalhes</button>`;
+
+    L.marker([l.lat, l.lng], { icon }).addTo(leafletMap).bindPopup(popupHtml, { maxWidth: 260 });
+  });
+
+  if (comCoord.length > 0) {
+    const bounds = L.latLngBounds(comCoord.map(l => [l.lat, l.lng]));
+    leafletMap.fitBounds(bounds, { padding: [40, 40] });
+  }
+}
+
+function closeMapPopupAndOpen(id) {
+  if (leafletMap) leafletMap.closePopup();
+  openDetalhe(id);
 }
 
 // ==================== EXPORT ====================
