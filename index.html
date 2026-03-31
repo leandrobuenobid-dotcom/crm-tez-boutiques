@@ -949,67 +949,16 @@ async function gsLoad() {
 }
 
 async function gsSave(loja) {
-  return new Promise((resolve) => {
-    try {
-      const form = document.createElement('form');
-      form.method = 'POST';
-      form.action = GS_URL;
-      form.target = '_gs_iframe';
-      form.style.display = 'none';
-
-      const input = document.createElement('input');
-      input.type = 'hidden';
-      input.name = 'payload';
-      input.value = JSON.stringify({ action: 'save', loja: loja });
-      form.appendChild(input);
-
-      let iframe = document.getElementById('_gs_iframe');
-      if (!iframe) {
-        iframe = document.createElement('iframe');
-        iframe.name = '_gs_iframe';
-        iframe.id = '_gs_iframe';
-        iframe.style.display = 'none';
-        document.body.appendChild(iframe);
-      }
-
-      document.body.appendChild(form);
-      iframe.onload = () => { form.remove(); resolve(); };
-      form.submit();
-      setTimeout(resolve, 3000);
-    } catch(e) { console.warn('gsSave error', e); resolve(); }
-  });
+  try {
+    const data = encodeURIComponent(JSON.stringify(loja));
+    await fetch(GS_URL + '?action=save&data=' + data, { redirect: 'follow' });
+  } catch(e) { console.warn('gsSave error', e); }
 }
 
 async function gsDelete(id) {
-  return new Promise((resolve) => {
-    try {
-      const form = document.createElement('form');
-      form.method = 'POST';
-      form.action = GS_URL;
-      form.target = '_gs_iframe';
-      form.style.display = 'none';
-
-      const input = document.createElement('input');
-      input.type = 'hidden';
-      input.name = 'payload';
-      input.value = JSON.stringify({ action: 'delete', id: id });
-      form.appendChild(input);
-
-      let iframe = document.getElementById('_gs_iframe');
-      if (!iframe) {
-        iframe = document.createElement('iframe');
-        iframe.name = '_gs_iframe';
-        iframe.id = '_gs_iframe';
-        iframe.style.display = 'none';
-        document.body.appendChild(iframe);
-      }
-
-      document.body.appendChild(form);
-      iframe.onload = () => { form.remove(); resolve(); };
-      form.submit();
-      setTimeout(resolve, 3000);
-    } catch(e) { console.warn('gsDelete error', e); resolve(); }
-  });
+  try {
+    await fetch(GS_URL + '?action=delete&id=' + encodeURIComponent(id), { redirect: 'follow' });
+  } catch(e) { console.warn('gsDelete error', e); }
 }
 
 function showSyncStatus(msg, cor) {
