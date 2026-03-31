@@ -934,31 +934,65 @@ function saveData(d) {
 }
 
 // ==================== SYNC ====================
+const COLS = ['id','nome','resp','wpp','tel','cidade','estado','endereco','insta','site','status','followup','lat','lng','produtos','notas','log','criado'];
+
+function lojaToRow(l) {
+  return COLS.map(c => {
+    const v = l[c];
+    if (Array.isArray(v)) return JSON.stringify(v);
+    return (v !== undefined && v !== null) ? v : '';
+  });
+}
+
+function rowToLoja(row) {
+  const obj = {};
+  COLS.forEach((c, i) => obj[c] = row[i]);
+  try { obj.produtos = JSON.parse(obj.produtos || '[]'); } catch(e) { obj.produtos = []; }
+  try { obj.log = JSON.parse(obj.log || '[]'); } catch(e) { obj.log = []; }
+  obj.lat = parseFloat(obj.lat) || null;
+  obj.lng = parseFloat(obj.lng) || null;
+  return obj;
+}
+
+async function gsSync() {
+  showSyncStatus('🔄 Sincronizando...', 'var(--contato)');
+  try {
+    const lojas = getData();
+    const rows = [COLS, ...lojas.map(lojaToRow)];
+    const resp = await fetch(GS_URL, {
+      method: 'POST',
+      redirect: 'follow',
+      headers: { 'Content-Type': 'text/plain' },
+      body: JSON.stringify({ aba: 'Lojas', rows })
+    });
+    const data = await resp.json();
+    if (!data.ok) throw new Error('Resposta inválida');
+    showSyncStatus('✔ Salvo no Sheets', 'var(--parceria)');
+  } catch(e) {
+    console.error('gsSync error', e);
+    showSyncStatus('⚠ Erro no sync', 'var(--danger)');
+  }
+}
+
 async function gsLoad() {
+  showSyncStatus('🔄 Carregando...', 'var(--contato)');
   try {
-    const res = await fetch(GS_URL + '?action=load', { redirect: 'follow' });
+    const res = await fetch(GS_URL + '?aba=Lojas', { redirect: 'follow' });
     const json = await res.json();
-    if (json.ok && Array.isArray(json.data) && json.data.length > 0) {
+    if (json.values && json.values.length > 1) {
+      const fromSheets = json.values.slice(1).filter(r => r[0]).map(rowToLoja);
       const local = getData();
-      const localMap = {};
-      local.forEach(l => localMap[l.id] = l);
-      json.data.forEach(l => { if (!localMap[l.id]) localMap[l.id] = l; });
-      saveData(Object.values(localMap));
+      const idsSheets = new Set(fromSheets.map(x => x.id));
+      const novosLocais = local.filter(x => !idsSheets.has(x.id));
+      saveData([...novosLocais, ...fromSheets]);
     }
-  } catch(e) { console.warn('gsLoad error', e); }
-}
-
-async function gsSave(loja) {
-  try {
-    const data = encodeURIComponent(JSON.stringify(loja));
-    await fetch(GS_URL + '?action=save&data=' + data, { redirect: 'follow' });
-  } catch(e) { console.warn('gsSave error', e); }
-}
-
-async function gsDelete(id) {
-  try {
-    await fetch(GS_URL + '?action=delete&id=' + encodeURIComponent(id), { redirect: 'follow' });
-  } catch(e) { console.warn('gsDelete error', e); }
+    showSyncStatus('✔ Sincronizado', 'var(--parceria)');
+    return true;
+  } catch(e) {
+    console.error('gsLoad error', e);
+    showSyncStatus('⚠ Erro ao carregar', 'var(--danger)');
+    return false;
+  }
 }
 
 function showSyncStatus(msg, cor) {
@@ -1294,7 +1328,7 @@ function salvarLoja() {
 
   saveData(data);
   closeModalLoja();
-  gsSave(loja).then(() => showSyncStatus('✔ Salvo no Sheets', 'var(--parceria)'));
+  gsSync();
   renderTab();
 }
 
@@ -1387,7 +1421,7 @@ function atualizarStatus(id, novoStatus) {
   if (idx >= 0) {
     data[idx].status = novoStatus;
     saveData(data);
-    gsSave(data[idx]).then(() => showSyncStatus('✔ Status atualizado', 'var(--parceria)'));
+    gsSync();
     renderTab();
   }
 }
@@ -1406,7 +1440,7 @@ function addLog(id) {
       texto
     });
     saveData(data);
-    gsSave(data[idx]).then(() => showSyncStatus('✔ Log salvo no Sheets', 'var(--parceria)'));
+    gsSync();
     openDetalhe(id);
     renderTab();
   }
@@ -1416,7 +1450,7 @@ function excluirLoja(id) {
   if (!confirm('Excluir esta loja permanentemente?')) return;
   let data = getData().filter(x => x.id !== id);
   saveData(data);
-  gsDelete(id).then(() => showSyncStatus('✔ Excluído do Sheets', 'var(--parceria)'));
+  gsSync();
   closeModalDetalhe();
   renderTab();
 }
@@ -1510,11 +1544,7 @@ function closeMapPopupAndOpen(id) {
 }
 
 function sincronizarManual() {
-  showSyncStatus('🔄 Sincronizando...', 'var(--contato)');
-  gsLoad().then(() => {
-    showSyncStatus('✔ Sincronizado', 'var(--parceria)');
-    renderTab();
-  });
+  gsLoad().then(() => renderTab());
 }
 
 // ==================== EXPORT ====================
