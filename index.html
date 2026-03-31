@@ -949,27 +949,67 @@ async function gsLoad() {
 }
 
 async function gsSave(loja) {
-  try {
-    const res = await fetch(GS_URL, {
-      method: 'POST',
-      redirect: 'follow',
-      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-      body: JSON.stringify({ action: 'save', loja: loja })
-    });
-    const json = await res.json();
-    console.log('gsSave response:', json);
-  } catch(e) { console.warn('gsSave error', e); }
+  return new Promise((resolve) => {
+    try {
+      const form = document.createElement('form');
+      form.method = 'POST';
+      form.action = GS_URL;
+      form.target = '_gs_iframe';
+      form.style.display = 'none';
+
+      const input = document.createElement('input');
+      input.type = 'hidden';
+      input.name = 'payload';
+      input.value = JSON.stringify({ action: 'save', loja: loja });
+      form.appendChild(input);
+
+      let iframe = document.getElementById('_gs_iframe');
+      if (!iframe) {
+        iframe = document.createElement('iframe');
+        iframe.name = '_gs_iframe';
+        iframe.id = '_gs_iframe';
+        iframe.style.display = 'none';
+        document.body.appendChild(iframe);
+      }
+
+      document.body.appendChild(form);
+      iframe.onload = () => { form.remove(); resolve(); };
+      form.submit();
+      setTimeout(resolve, 3000);
+    } catch(e) { console.warn('gsSave error', e); resolve(); }
+  });
 }
 
 async function gsDelete(id) {
-  try {
-    await fetch(GS_URL, {
-      method: 'POST',
-      redirect: 'follow',
-      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-      body: JSON.stringify({ action: 'delete', id: id })
-    });
-  } catch(e) { console.warn('gsDelete error', e); }
+  return new Promise((resolve) => {
+    try {
+      const form = document.createElement('form');
+      form.method = 'POST';
+      form.action = GS_URL;
+      form.target = '_gs_iframe';
+      form.style.display = 'none';
+
+      const input = document.createElement('input');
+      input.type = 'hidden';
+      input.name = 'payload';
+      input.value = JSON.stringify({ action: 'delete', id: id });
+      form.appendChild(input);
+
+      let iframe = document.getElementById('_gs_iframe');
+      if (!iframe) {
+        iframe = document.createElement('iframe');
+        iframe.name = '_gs_iframe';
+        iframe.id = '_gs_iframe';
+        iframe.style.display = 'none';
+        document.body.appendChild(iframe);
+      }
+
+      document.body.appendChild(form);
+      iframe.onload = () => { form.remove(); resolve(); };
+      form.submit();
+      setTimeout(resolve, 3000);
+    } catch(e) { console.warn('gsDelete error', e); resolve(); }
+  });
 }
 
 function showSyncStatus(msg, cor) {
