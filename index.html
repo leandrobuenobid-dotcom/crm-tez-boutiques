@@ -979,8 +979,19 @@ async function gsLoad() {
   try {
     const res = await fetch(GS_URL + '?aba=Lojas', { redirect: 'follow' });
     const json = await res.json();
+    console.log('gsLoad response:', JSON.stringify(json).substring(0, 200));
     if (json.values && json.values.length > 1) {
-      const fromSheets = json.values.slice(1).filter(r => r[0]).map(rowToLoja);
+      const headers = json.values[0];
+      const fromSheets = json.values.slice(1).filter(r => r[0]).map(row => {
+        const obj = {};
+        headers.forEach((h, i) => obj[h] = row[i] !== undefined ? row[i] : '');
+        try { obj.produtos = typeof obj.produtos === 'string' ? JSON.parse(obj.produtos || '[]') : (obj.produtos || []); } catch(x) { obj.produtos = []; }
+        try { obj.log = typeof obj.log === 'string' ? JSON.parse(obj.log || '[]') : (obj.log || []); } catch(x) { obj.log = []; }
+        obj.lat = parseFloat(obj.lat) || null;
+        obj.lng = parseFloat(obj.lng) || null;
+        return obj;
+      });
+      console.log('fromSheets count:', fromSheets.length);
       const local = getData();
       const idsSheets = new Set(fromSheets.map(x => x.id));
       const novosLocais = local.filter(x => !idsSheets.has(x.id));
@@ -1128,7 +1139,7 @@ function renderLista() {
           <td>${fu ? `<span class="${fuClass}">📅 ${fu}</span>` : '<span style="color:var(--text-muted)">—</span>'}</td>
           <td><div class="produtos-tags">${prods || '<span style="color:var(--text-muted);font-size:11px">—</span>'}</div></td>
           <td onclick="event.stopPropagation()">
-            ${l.wpp ? `<a class="wpp-btn" href="https://wa.me/55${l.wpp.replace(/\D/g,'')}" target="_blank">💬 WPP</a>` : ''}
+            ${l.wpp ? `<a class="wpp-btn" href="https://wa.me/55${String(l.wpp).replace(/\D/g,'')}" target="_blank">💬 WPP</a>` : ''}
           </td>
         </tr>`;
     }).join('');
@@ -1357,7 +1368,7 @@ function openDetalhe(id) {
       <div class="detail-grid">
         <div class="detail-item"><div class="key">Responsável</div><div class="val">${l.resp||'—'}</div></div>
         <div class="detail-item"><div class="key">WhatsApp</div><div class="val">
-          ${l.wpp ? `<a class="wpp-btn" href="https://wa.me/55${l.wpp.replace(/\D/g,'')}" target="_blank">💬 ${l.wpp}</a>` : '—'}
+          ${l.wpp ? `<a class="wpp-btn" href="https://wa.me/55${String(l.wpp).replace(/\D/g,'')}" target="_blank">💬 ${l.wpp}</a>` : '—'}
         </div></div>
         <div class="detail-item"><div class="key">Telefone</div><div class="val">${l.tel||'—'}</div></div>
         <div class="detail-item"><div class="key">Instagram</div><div class="val">${l.insta ? `<a href="https://instagram.com/${l.insta.replace('@','')}" target="_blank" style="color:var(--gold)">${l.insta}</a>` : '—'}</div></div>
@@ -1526,7 +1537,7 @@ function renderMapa() {
       <div class="map-popup-cidade">${[l.cidade, l.estado].filter(Boolean).join(' · ') || '—'}</div>
       <span class="map-popup-badge" style="background:${cor}22;color:${cor}">${statusLabel(l.status)}</span>
       <div style="font-size:11px;color:#8a8070;margin-bottom:6px">${l.resp ? '👤 ' + l.resp : ''}</div>
-      ${l.wpp ? `<a href="https://wa.me/55${l.wpp.replace(/\D/g,'')}" target="_blank" style="display:inline-flex;align-items:center;gap:5px;padding:5px 12px;background:#4caf7d22;color:#4caf7d;border:1px solid #4caf7d44;border-radius:6px;font-size:12px;font-weight:600;text-decoration:none;margin-right:6px">💬 WhatsApp</a>` : ''}
+      ${l.wpp ? `<a href="https://wa.me/55${String(l.wpp).replace(/\D/g,'')}" target="_blank" style="display:inline-flex;align-items:center;gap:5px;padding:5px 12px;background:#4caf7d22;color:#4caf7d;border:1px solid #4caf7d44;border-radius:6px;font-size:12px;font-weight:600;text-decoration:none;margin-right:6px">💬 WhatsApp</a>` : ''}
       <button class="map-popup-btn" onclick="closeMapPopupAndOpen('${l.id}')">Ver detalhes</button>`;
 
     L.marker([l.lat, l.lng], { icon }).addTo(leafletMap).bindPopup(popupHtml, { maxWidth: 260 });
