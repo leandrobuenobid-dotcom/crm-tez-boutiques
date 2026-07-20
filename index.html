@@ -786,6 +786,7 @@ body {
     <div class="header-actions">
       <span id="sync-status" style="font-size:11px;color:var(--text-muted);transition:opacity 1s;opacity:0;margin-right:4px"></span>
       <button class="btn btn-outline btn-sm" onclick="sincronizarManual()" title="Sincronizar com Google Sheets">⟳ Sync</button>
+      <button class="btn btn-outline btn-sm" onclick="mesclarDuplicados()" title="Encontrar e mesclar lojas duplicadas">🧹 Duplicados</button>
       <button class="btn btn-gold" onclick="openModalNova()">+ Nova Loja</button>
       <button class="btn btn-outline btn-sm" onclick="exportarCSV()">↓ CSV</button>
       <button class="btn btn-ghost btn-sm" onclick="logout()" style="color:var(--text-muted)">Sair</button>
@@ -1004,6 +1005,77 @@ async function gsLoad() {
     showSyncStatus('⚠ Erro ao carregar', 'var(--danger)');
     return false;
   }
+}
+
+// ==================== DUPLICADOS ====================
+function normalizeStr(s) {
+  return (s || '')
+    .toString()
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .trim()
+    .replace(/\s+/g, ' ');
+}
+
+function statusRank(s) {
+  return { parceria: 4, negociacao: 3, contato: 2, prospect: 1 }[s] || 0;
+}
+
+function encontrarGruposDuplicados() {
+  const data = getData();
+  const grupos = {};
+  data.forEach(l => {
+    const chave = normalizeStr(l.nome) + '|' + normalizeStr(l.cidade);
+    if (!grupos[chave]) grupos[chave] = [];
+    grupos[chave].push(l);
+  });
+  return Object.values(grupos).filter(g => g.length > 1);
+}
+
+function mesclarDuplicados() {
+  const grupos = encontrarGruposDuplicados();
+  if (grupos.length === 0) { alert('Nenhuma loja duplicada encontrada. 🎉'); return; }
+
+  const totalDuplicatas = grupos.reduce((acc, g) => acc + (g.length - 1), 0);
+  const resumo = grupos.map(g => `• ${g[0].nome} (${g[0].cidade || '—'}) — ${g.length}x`).join('\n');
+  const ok = confirm(
+    `Encontradas ${grupos.length} lojas com cadastros duplicados (${totalDuplicatas} cópias a mais):\n\n${resumo}\n\n` +
+    `Deseja mesclar? Vou manter 1 cadastro por loja (o de status mais avançado no funil), juntar o histórico de contatos de todas as cópias, e remover o restante.`
+  );
+  if (!ok) return;
+
+  let data = getData();
+  grupos.forEach(grupo => {
+    const principal = [...grupo].sort((a, b) => {
+      const rankDiff = statusRank(b.status) - statusRank(a.status);
+      if (rankDiff !== 0) return rankDiff;
+      return new Date(a.criado || 0) - new Date(b.criado || 0);
+    })[0];
+
+    let logsUnidos = [];
+    grupo.forEach(l => { logsUnidos = logsUnidos.concat(l.log || []); });
+    principal.log = logsUnidos;
+
+    ['resp', 'wpp', 'tel', 'endereco', 'insta', 'site', 'notas', 'lat', 'lng', 'followup'].forEach(campo => {
+      if (!principal[campo]) {
+        const comValor = grupo.find(l => l[campo]);
+        if (comValor) principal[campo] = comValor[campo];
+      }
+    });
+    const produtosUnidos = new Set(principal.produtos || []);
+    grupo.forEach(l => (l.produtos || []).forEach(p => produtosUnidos.add(p)));
+    principal.produtos = [...produtosUnidos];
+
+    const idsRemover = grupo.filter(l => l.id !== principal.id).map(l => l.id);
+    data = data.filter(l => !idsRemover.includes(l.id));
+    const idx = data.findIndex(l => l.id === principal.id);
+    if (idx >= 0) data[idx] = principal;
+  });
+
+  saveData(data);
+  gsSync();
+  renderTab();
+  alert(`Pronto! ${totalDuplicatas} cadastro(s) duplicado(s) foram mesclados.`);
 }
 
 function showSyncStatus(msg, cor) {
@@ -1334,6 +1406,16 @@ function salvarLoja() {
       data[idx] = loja;
     }
   } else {
+    const nomeNorm = normalizeStr(loja.nome);
+    const cidadeNorm = normalizeStr(loja.cidade);
+    const existente = data.find(x => normalizeStr(x.nome) === nomeNorm && normalizeStr(x.cidade) === cidadeNorm);
+    if (existente) {
+      const prosseguir = confirm(
+        `Já existe uma loja "${existente.nome}" cadastrada em ${existente.cidade || '—'} (status: ${statusLabel(existente.status)}).\n\n` +
+        `Deseja mesmo criar um NOVO cadastro duplicado?\n\nClique em Cancelar para não duplicar.`
+      );
+      if (!prosseguir) return;
+    }
     data.push(loja);
   }
 
